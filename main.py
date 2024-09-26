@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from altair import selection
 
 # Page settings
 st.set_page_config(
@@ -17,7 +18,7 @@ def get_data(url, options):
     ima_components = pd.read_parquet(url)
     ntnb_data = ima_components.query('index_name in @options')
     ntnb_data['mod_duration'] = ntnb_data['duration'] / 252
-    ntnb_data['DV01'] = ntnb_data['mod_duration'] * ntnb_data['weight']
+
 
     return ntnb_data
 
@@ -80,17 +81,21 @@ selected_data['ntnb_weight'] = selected_data['weight'] * 100
 selected_data['invested_value'] = 0
 
 current_portfolio = col1.data_editor(selected_data[['ticker', 'invested_value']],
-                                     disabled=['ticker'],
-                                     hide_index=True,
-                                     width=800,
-                                     column_config=dict(
-                                         weight=st.column_config.NumberColumn('NTNB Weight', format='%.2f%%'))
-                                     )
+                         disabled=['ticker'],
+                         hide_index=True,
+                         width=800,
+                         column_config=dict(
+                             weight=st.column_config.NumberColumn('NTNB Weight', format='%.2f%%'))
+                         )
 
+selected_data['DV01'] = selected_data['mod_duration'] * current_portfolio['invested_value'] * 10**-4
+selected_data['duration'] = selected_data['mod_duration'] * selected_data['weight']
 selected_data['invested_value'] = current_portfolio['invested_value']
 selected_data['portfolio_weight'] = selected_data['invested_value'] / selected_data['invested_value'].sum()
-selected_data['portfolio_DV01'] = selected_data['mod_duration'] * selected_data['portfolio_weight']
+selected_data['portfolio_DV01'] = selected_data['mod_duration'] * selected_data['invested_value'] * 10**-4
+selected_data['portfolio_duration'] = selected_data['mod_duration'] * selected_data['portfolio_weight']
 selected_data['maturity'] = pd.to_datetime(selected_data['maturity'])
+
 
 optimized_portfolio = optimize_portfolio(selected_data, selection, current_portfolio["invested_value"].sum())
 
@@ -98,13 +103,15 @@ imab_yield = sum(selected_data['rate'] * selected_data['weight'])
 portfolio_yield = sum(selected_data['rate'] * selected_data['portfolio_weight'])
 
 merged_optimized_portfolio = selected_data.query('ticker in @optimized_portfolio.ticker').merge(optimized_portfolio, left_on='ticker', right_on='ticker')
-merged_optimized_portfolio['optimized_dv01'] = merged_optimized_portfolio['mod_duration'] * merged_optimized_portfolio['Novos pesos']
+merged_optimized_portfolio['optimized_dv01'] = merged_optimized_portfolio['mod_duration'] * merged_optimized_portfolio['Nova alocação'] * 10**-4
+merged_optimized_portfolio['optimized_duration'] = merged_optimized_portfolio['mod_duration'] * merged_optimized_portfolio['Novos pesos']
 optimized_portfolio_yield = sum(merged_optimized_portfolio['rate'] * merged_optimized_portfolio['Novos pesos'])
 optimized_portfolio_dv01 = merged_optimized_portfolio['optimized_dv01'].sum()
+optimized_portfolio_duration = merged_optimized_portfolio['optimized_duration'].sum()
 
 merged_selected_data = selected_data.merge(optimized_portfolio, on='ticker', how='left')
 #merged_selected_data = current_portfolio.merge(merged_selected_data, on='ticker', how='left')
-merged_selected_data['optimized_dv01'] = merged_selected_data['mod_duration'] * merged_selected_data['Novos pesos']
+merged_selected_data['optimized_dv01'] = merged_selected_data['mod_duration'] * merged_selected_data['Nova alocação'] * 10**-4
 
 col2.subheader(f'Portfólio {selected_index}')
 
@@ -117,15 +124,15 @@ col2.plotly_chart(fig)
 
 if selected_data['invested_value'].sum() > 0:
 
-    col1.write(f'PL: $ {current_portfolio["invested_value"].sum():,.2f}')
+    col1.write(f'PL: $ {current_portfolio["invested_value"].sum():.2f}')
 
     col1.subheader('DV1')
     col1.table(pd.DataFrame({
         'Metric': [f'{selected_index}', 'Portfólio atual', 'Portfólio Otimizado'],
         'Value': [
-            f'$ {selected_data["DV01"].sum() / 10:.2f}',
-            f'$ {selected_data["portfolio_DV01"].sum() / 10:.2f}',
-            f'$ {optimized_portfolio_dv01 / 10:.2f}',
+            f'$ {selected_data["DV01"].sum():.2f}',
+            f'$ {selected_data["portfolio_DV01"].sum():.2f}',
+            f'$ {optimized_portfolio_dv01:.2f}',
         ]
     })
     )
@@ -134,9 +141,9 @@ if selected_data['invested_value'].sum() > 0:
     col1.table(pd.DataFrame({
         'Metric': [f'{selected_index}', 'Portfólio atual', 'Portfólio Otimizado'],
         'Value': [
-            f'{round(selected_data["DV01"].sum(), 2)}',
-            f'{round(selected_data["portfolio_DV01"].sum(), 2)}',
-            f'{round(optimized_portfolio_dv01, 2)}'
+            f'{round(selected_data["duration"].sum(), 2)}',
+            f'{round(selected_data["portfolio_duration"].sum(), 2)}',
+            f'{round(optimized_portfolio_duration, 2)}'
         ]
     })
     )
@@ -201,7 +208,7 @@ if selected_data['invested_value'].sum() > 0:
     st.plotly_chart(fig)
 
     fig = px.bar(merged_selected_data, x='ticker', y=['DV01', 'portfolio_DV01', 'optimized_dv01'],
-                 barmode='group', height=400, width=800)
+           barmode='group', height=400, width=800)
     fig.update_layout(
         legend=dict(y=1.1, orientation='h')
     )
