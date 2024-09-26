@@ -117,7 +117,7 @@ col2.plotly_chart(fig)
 
 if selected_data['invested_value'].sum() > 0:
 
-    col1.write(f'PL: $ {current_portfolio["invested_value"].sum():.2f}')
+    col1.write(f'PL: $ {current_portfolio["invested_value"].sum():,.2f}')
 
     col1.subheader('DV1')
     col1.table(pd.DataFrame({
